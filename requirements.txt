@@ -1,0 +1,8 @@
+# core ui framework
+streamlit
+
+# image processing
+Pillow
+
+# data processing
+pandas
