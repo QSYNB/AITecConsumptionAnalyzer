@@ -1,86 +1,98 @@
 import streamlit as st
-from PIL import Image
+import os
+import random
+import pandas as pd
+# 导入你之前封装好的两个核心引擎
+from src.ocr_engine import ocr_image, extract_total, extract_candidate_items
+from src.nlp_engine import predict_items
 
-# 页面配置
-st.set_page_config(page_title="Smart Sustainable Analyzer", layout="wide")
+# --- 1. 基础配置 ---
+# 确保路径指向你存放 SROIE 训练集图片的文件夹
+SROIE_IMG_DIR = r"D:\15_MAI\7002\GROUP ASSIGNMENT\git\train\img" 
+# 指向 M4 提供给你的模型文件夹
+MODEL_PATH = r"D:\15_MAI\7002\GROUP ASSIGNMENT\git\models\item_classifier_model"
 
-# 自定义一些样式，让按钮和容器更好看
-st.markdown("""
-    <style>
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #007BFF; color: white; }
-    .result-container { padding: 20px; border: 1px solid #ccc; border-radius: 10px; background-color: #fafafa; }
-    </style>
-    """, unsafe_allow_html=True)
+st.set_page_config(page_title="Eco-Consumer Analyzer", layout="wide")
 
 st.title("🌱 Smart Sustainable Consumption Analyzer")
 st.markdown("---")
 
-# 创建主要布局：三栏 — 左：上传（40%），中：设置（20%），右：结果（40%）
-col_upload, col_settings, col_result = st.columns([2, 1, 3])
+# --- 2. 侧边栏与输入控制 ---
+with st.sidebar:
+    st.header("⚙️ Control Panel")
+    if st.button("🎲 随机选择 SROIE 收据", type="primary"):
+        if os.path.exists(SROIE_IMG_DIR):
+            image_files = [f for f in os.listdir(SROIE_IMG_DIR) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
+            random_img = random.choice(image_files)
+            st.session_state.current_img = os.path.join(SROIE_IMG_DIR, random_img)
+            st.session_state.run_analysis = True
+        else:
+            st.error("找不到图片目录，请检查路径配置。")
 
-# --- 第一部分：上传图片区域 ---
-with col_upload:
-    st.subheader("1️⃣ Upload Receipt")
-    uploaded_file = st.file_uploader("Choose a receipt image...", type=["jpg", "jpeg", "png"])
+# --- 3. 主界面布局 ---
+col_img, col_data = st.columns([1, 1.2])
 
-    if uploaded_file is not None:
-        # 显示缩略图
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Preview", use_container_width=True)
+if 'current_img' in st.session_state:
+    with col_img:
+        st.subheader("🖼️ Selected Receipt")
+        st.image(st.session_state.current_img, use_container_width=True)
+        
+    with col_data:
+        st.subheader("🔍 Analysis Results")
+        
+        if st.session_state.get('run_analysis'):
+            with st.spinner('正在执行 OCR 与 NLP 深度分析...'):
+                # 第一步：OCR 提取文字和总额
+                full_text, lines = ocr_image(st.session_state.current_img)
+                total_price = extract_total(lines)
+                
+                # 第二步：筛选商品候选行
+                candidate_lines = extract_candidate_items(lines)
+                
+                # 第三步：调用 NLP 模型进行分类
+                # 此处调用 M4 训练的 DistilBERT 模型
+                classification_results = predict_items(candidate_lines, model_path=MODEL_PATH)
+                
+                # --- 展示核心指标 ---
+                st.metric(label="Total Amount", value=f"RM {total_price}")
+                
+                # --- 展示商品分类详情 ---
+                
 
-        # 如果是新上传的文件，重置触发状态，等待用户点击 Generate
-        if 'last_uploaded' not in st.session_state or st.session_state.last_uploaded != getattr(uploaded_file, 'name', None):
-            st.session_state.last_uploaded = getattr(uploaded_file, 'name', None)
-            st.session_state.trigger_analysis = False
 
-    else:
-        st.info("Please upload an image to unlock analysis settings.")
 
-# --- 第二部分：按钮与配置（放在中间列） ---
-with col_settings:
-    st.subheader("2️⃣ Analysis Settings")
+                st.write("### 🛒 Item Classification")
+                if classification_results:
+                    # 转化为 DataFrame 并在 UI 展示
+                    df_results = pd.DataFrame(classification_results)
+                    
+                    
+                    # 定义类别颜色映射
+                    color_map = {
+                        "fresh_food": "green",
+                        "sugary_drink": "red",
+                        "processed_food": "orange",
+                        "single_use_plastic": "gray"
+                    }
+                    
+                    # 美化表格显示
+                    st.dataframe(
+                        df_results[['item', 'category', 'confidence']],
+                        column_config={
+                            "item": "Product Name",
+                            "category": st.column_config.SelectboxColumn("Category", options=color_map.keys()),
+                            "confidence": st.column_config.NumberColumn("Confidence", format="%.2f")
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("未能识别出具体的商品行。")
 
-    settings_disabled = uploaded_file is None
+                # --- 原始数据折叠栏 ---
+                with st.expander("📄 查看 OCR 原始文本"):
+                    st.text(full_text)
 
-    do_eco = st.checkbox("Environmental Impact Analysis (SDG 12)", value=True, disabled=settings_disabled)
-    do_health = st.checkbox("Health & Nutrition Analysis", value=False, disabled=settings_disabled)
-    do_spending = st.checkbox("Spending Insights", value=True, disabled=settings_disabled)
-
-    # 大按钮：生成（上传前禁用）
-    if st.button("🚀 Generate Insights", disabled=settings_disabled):
-        st.session_state.trigger_analysis = True
-
-# --- 第三部分：结果生成区域 ---
-with col_result:
-    st.subheader("3️⃣ Analysis Report")
-    
-    # 初始状态：等待上传
-    if 'trigger_analysis' not in st.session_state or not st.session_state.trigger_analysis:
-        st.info("Results will appear here once you click 'Generate'.")
-        # 这里可以放一个精美的占位图
-        st.image("https://via.placeholder.com/600x400.png?text=Waiting+for+Data+Processing...", use_container_width=True)
-    
-    else:
-        # 当点击生成后的展示逻辑
-        with st.container(border=True):
-            st.success("Analysis Complete!")
-            
-
-            # 模拟三个区域的结果
-            if do_eco:
-                with st.expander("🍀 Environmental Impact", expanded=True):
-                    st.metric(label="Eco Score", value="82/100", delta="Excellent")
-                    st.write("- Found 3 organic items.\n- Plastic packaging detected in 2 items.")
-            
-            if do_health:
-                with st.expander("🍎 Health Analysis", expanded=True):
-                    st.write("- High sugar content detected in: 'Coca Cola'.\n- Good protein source: 'Chicken Breast'.")
-            
-            if do_spending:
-                with st.expander("💰 Spending Insights", expanded=False):
-                    st.bar_chart({"Category": ["Food", "Household", "Other"], "Spend": [45, 12, 5]})
-
-# 重置按钮逻辑 (可选)
-if st.sidebar.button("Reset All"):
-    st.session_state.trigger_analysis = False
-    st.rerun()
+# --- 4. 页脚提示 ---
+st.markdown("---")
+st.caption("Powered by Tesseract OCR & DistilBERT | Team Lead Integrated Version")
