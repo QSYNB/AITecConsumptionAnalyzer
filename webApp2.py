@@ -3,9 +3,10 @@ import os
 import random
 import pandas as pd
 from src.ocr_engine import ocr_image, extract_total, extract_candidate_items
-from src.llm_engine import get_eco_report_from_deepseek # 确保你已按上一条建议创建该文件
+from src.llm_engine import get_eco_report_from_deepseek 
 import json
 import re
+from src.nlp_engine import extract_candidate_item_lines, predict_items
 
 def parse_llm_json(raw_response):
     """
@@ -84,16 +85,72 @@ if 'current_img' in st.session_state:
         # 使用 Tabs 区分两个“端”的功能
         tab_std, tab_ai = st.tabs(["📊 Standard Mode", "🧠 DeepSeek AI Expert"])
 
-        # --- Tab 1: 基础模式 (只看提取结果) ---
-        with tab_std:
-            st.markdown("### Transaction Summary")
-            st.metric("Total Amount", f"RM {st.session_state.raw_data['total']}")
+    # --- Tab 1: 基础模式 (本地模型驱动) ---
+    # --- Tab 1: 基础模式 (本地模型驱动) ---
+    with tab_std:
+        st.markdown("### 📊 Local NLP Audit (DistilBERT)")
+        
+        raw_text = st.session_state.raw_data.get('text', "")
+        
+        if raw_text:
+            # 1. 提取候选行 (调用队友的过滤逻辑)
+            with st.spinner("Filtering receipt lines..."):
+                candidate_items = extract_candidate_item_lines(raw_text)
             
-            st.markdown("### Extracted Lines")
-            st.table(st.session_state.raw_data['items'])
-            
-            with st.expander("View Raw OCR Output"):
-                st.text(st.session_state.raw_data['text'])
+            if candidate_items:
+                with st.spinner("Classifying items using local model..."):
+                    results = predict_items(candidate_items)
+                
+                # --- 新增：过滤 'other' 类别并准备绘图数据 ---
+                # 仅保留非 'other' 的结果用于可视化分析
+                filtered_results = [res for res in results if res['category'] != 'other']
+                
+                if filtered_results:
+                    # 转换成 DataFrame 方便统计
+                    df_res = pd.DataFrame(filtered_results)
+                    
+                    # 布局：左边显示指标和表格，右边显示饼图
+                    c_metrics, c_chart = st.columns([1, 1])
+                    
+                    with c_metrics:
+                        st.metric("Identified Specific Items", len(filtered_results))
+                        st.write("Below are the categorized items (excluding 'other').")
+                    
+                    with c_chart:
+                        # 使用 plotly 画饼图
+                        import plotly.express as px
+                        cat_counts = df_res['category'].value_counts().reset_index()
+                        cat_counts.columns = ['Category', 'Count']
+                        
+                        fig = px.pie(
+                            cat_counts, 
+                            values='Count', 
+                            names='Category', 
+                            title='Consumption Distribution',
+                            hole=0.4, # 变成环形图，更现代
+                            color_discrete_sequence=px.colors.qualitative.Pastel
+                        )
+                        fig.update_traces(textposition='inside', textinfo='percent+label')
+                        st.plotly_chart(fig, use_container_width=True)
+
+                    # 2. 构造明细表格数据 (保留全部结果以便查看，或仅显示过滤后的)
+                    st.markdown("#### 🛒 Detailed Classification")
+                    table_data = []
+                    for res in results:
+                        # 这里可以选择是否用特殊颜色标出 'other'，或仅显示 filtered_results
+                        table_data.append({
+                            "Item": res['line'],
+                            "Category": res['category'],
+                            "Confidence": f"{res['confidence']:.2%}"
+                        })
+                    st.table(table_data)
+                else:
+                    st.warning("All detected items were classified as 'other'. No chart to display.")
+                    st.table(results) # 降级显示原始表格
+            else:
+                st.warning("No valid items detected by the local filters.")
+        else:
+            st.info("Please upload a receipt first.")
 
         # --- Tab 2: AI 专家模式 (调用大模型) ---
         # --- Tab 2: AI 专家模式 (调用大模型) ---
