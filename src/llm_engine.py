@@ -6,17 +6,17 @@ import streamlit as st
 
 HF_TOKEN = st.secrets["HF_TOKEN"]
 
-# 如果你使用的是 SiliconFlow 或 DeepSeek 官方 API
+# Initialize the OpenAI client to connect to models on Hugging Face
 client = openai.OpenAI(
     api_key=HF_TOKEN, 
-    base_url="https://router.huggingface.co/v1" # 或者相应的服务商地址
+    base_url="https://router.huggingface.co/v1" 
 )
 
 
 
 def get_eco_report_from_deepseek(raw_ocr_text):
     """
-    通过 OpenAI SDK 调用 Hugging Face 上的 DeepSeek 模型
+    Calling DeepSeek on Hugging Face via OpenAI SDK
     """
     prompt = f"""
     ### ROLE ###
@@ -61,19 +61,19 @@ def get_eco_report_from_deepseek(raw_ocr_text):
 
     try:
         completion = client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-V3", # 确保模型名称准确
+            model="deepseek-ai/DeepSeek-V3", 
             messages=[
                 {"role": "system", "content": "You are a professional sustainability auditor that outputs ONLY JSON."},
                 {"role": "user", "content": prompt}
             ],
-            # 限制输出 Token 数量，节省开销
-            max_tokens=800,
+            # Limit the number of tokens output to save overhead.
+            max_tokens=1000,
             temperature=0.7
         )
 
         result_text = completion.choices[0].message.content
         
-        # 稳健的 JSON 提取逻辑
+        # JSON extraction logic
         json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
         if json_match:
             return json.loads(json_match.group())
@@ -85,10 +85,11 @@ def get_eco_report_from_deepseek(raw_ocr_text):
     
 def parse_llm_json(raw_response):
     """
-    清洗大模型返回的文本并解析为 Python 字典
+    Clean the text returned by the LLM and parse it into a Python dictionary
     """
     try:
         # 1. 使用正则提取 JSON 块（防止模型返回多余的 Markdown 标记或解释词）
+        # 1. Use regex to extract the JSON block (to avoid extra markdown or explanatory words from the model)
         json_pattern = r'\{.*\}'
         match = re.search(json_pattern, raw_response, re.DOTALL)
         
@@ -97,6 +98,7 @@ def parse_llm_json(raw_response):
             return json.loads(json_str)
         else:
             # 如果没找到 JSON 括号，尝试直接解析整个字符串
+            # If no JSON braces found, try parsing the whole string directly
             return json.loads(raw_response)
     except Exception as e:
         print(f"JSON Parsing Error: {e}")
