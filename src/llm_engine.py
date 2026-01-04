@@ -1,6 +1,7 @@
 import openai
 import json
 import re
+import streamlit as st
 
 
 HF_TOKEN = st.secrets["HF_TOKEN"]
@@ -18,17 +19,44 @@ def get_eco_report_from_deepseek(raw_ocr_text):
     通过 OpenAI SDK 调用 Hugging Face 上的 DeepSeek 模型
     """
     prompt = f"""
-    Analyze this shopping receipt text for sustainability. 
-    1. Extract actual items.
-    2. Score Eco-impact (0-100) and Health (0-100).
-    3. Identify 2 UN SDGs.
-    4. Provide 1 sustainability tip.
+    ### ROLE ###
+    You are a Senior Sustainability Audit Expert. Your goal is to analyze the provided OCR text from a shopping receipt and generate a human-centric, professional sustainability report.
 
-    Receipt Content:
+    ### LOGIC & TASKS ###
+    1. **Data Extraction**: Reconstruct the shopping list with product names and prices. Correct OCR artifacts (e.g., '0' to 'O', '1' to 'I').
+    2. **Classification**: Categorize the transaction into: [Dining & Eating Out / Grocery & Fresh Food / Household & Living / Others].
+    3. **Differential Audit**:
+    - For [Dining]: Evaluate nutritional balance and energy contribution.
+    - For [Grocery]: Assess the Veg-to-Meat ratio and identify local/low-carbon items.
+    - For [Household]: Focus on packaging minimalism and eco-friendly materials.
+    4. **SDG Mapping**: Link the consumption to a specific UN Sustainable Development Goal.
+
+    ### OUTPUT FORMAT (STRICT JSON) ###
+    You must return a valid JSON object ONLY. Use the following structure:
+    {{
+    "header": "A catchy, emotional title (e.g., 'The Green Gourmet’s Lunch')",
+    "receipt_summary": {{
+        "items": [
+        {{"name": "Cleaned Product Name", "price": "Price with Currency"}}
+        ],
+        "total_amount": "Total sum found"
+    }},
+    "consumption_category": "The chosen category",
+    "audit_details": {{
+        "positives": ["Point 1: Sustainability/Health benefit", "Point 2..."],
+        "concerns": ["A gentle observation of a potential risk"],
+        "suggestion": "A warm, friend-like tip for next time (avoid preachy tone)"
+    }},
+    "sdg_impact": {{
+        "target": "SDG Number and Name (e.g., SDG 12: Responsible Consumption)",
+        "explanation": "Why this purchase relates to this SDG"
+    }},
+    "score": 85,
+    "soul_quote": "A warm, inspiring 'Daily Wisdom' quote"
+    }}
+
+    ### RAW OCR TEXT TO ANALYZE ###
     {raw_ocr_text}
-
-    Return ONLY a JSON object. Format:
-    {{"items": [], "eco_score": int, "health_score": int, "sdgs": [], "advice": ""}}
     """
 
     try:
@@ -54,3 +82,22 @@ def get_eco_report_from_deepseek(raw_ocr_text):
 
     except Exception as e:
         return {"error": f"LLM Call Failed: {str(e)}"}
+    
+def parse_llm_json(raw_response):
+    """
+    清洗大模型返回的文本并解析为 Python 字典
+    """
+    try:
+        # 1. 使用正则提取 JSON 块（防止模型返回多余的 Markdown 标记或解释词）
+        json_pattern = r'\{.*\}'
+        match = re.search(json_pattern, raw_response, re.DOTALL)
+        
+        if match:
+            json_str = match.group()
+            return json.loads(json_str)
+        else:
+            # 如果没找到 JSON 括号，尝试直接解析整个字符串
+            return json.loads(raw_response)
+    except Exception as e:
+        print(f"JSON Parsing Error: {e}")
+        return None 
