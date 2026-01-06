@@ -1,0 +1,44 @@
+{
+  "activation": "gelu",
+  "architectures": [
+    "DistilBertForSequenceClassification"
+  ],
+  "attention_dropout": 0.1,
+  "dim": 768,
+  "dropout": 0.1,
+  "dtype": "float32",
+  "hidden_dim": 3072,
+  "id2label": {
+    "0": "fresh_food",
+    "1": "processed_food",
+    "2": "sugary_drink",
+    "3": "single_use_plastic",
+    "4": "household_chemical",
+    "5": "eco_friendly",
+    "6": "non_essential",
+    "7": "other"
+  },
+  "initializer_range": 0.02,
+  "label2id": {
+    "eco_friendly": 5,
+    "fresh_food": 0,
+    "household_chemical": 4,
+    "non_essential": 6,
+    "other": 7,
+    "processed_food": 1,
+    "single_use_plastic": 3,
+    "sugary_drink": 2
+  },
+  "max_position_embeddings": 512,
+  "model_type": "distilbert",
+  "n_heads": 12,
+  "n_layers": 6,
+  "pad_token_id": 0,
+  "problem_type": "single_label_classification",
+  "qa_dropout": 0.1,
+  "seq_classif_dropout": 0.2,
+  "sinusoidal_pos_embds": false,
+  "tie_weights_": true,
+  "transformers_version": "4.57.3",
+  "vocab_size": 30522
+}
