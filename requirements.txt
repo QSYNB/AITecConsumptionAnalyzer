@@ -1,8 +1,10 @@
-# core ui framework
 streamlit
-
-# image processing
-Pillow
-
-# data processing
 pandas
+opencv-python-headless
+imutils
+plotly
+transformers
+torch
+tesseract
+pytesseract
+openai
